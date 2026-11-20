@@ -1,0 +1,15 @@
+{
+  "name": "claude-mod-image-preview",
+  "description": "Image preview for Claude Code: see which image you dropped into the prompt before you send it",
+  "owner": {
+    "name": "thrishma",
+    "url": "https://github.com/thrishma"
+  },
+  "plugins": [
+    {
+      "name": "image-preview",
+      "source": "./",
+      "description": "Shows a preview of the image behind each [Image #N] in the prompt box, before you press Enter"
+    }
+  ]
+}

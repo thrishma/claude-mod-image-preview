@@ -1,0 +1,12 @@
+{
+  "name": "image-preview",
+  "version": "0.1.0",
+  "description": "See which image you dropped or pasted into the Claude Code prompt before you press Enter.",
+  "author": {
+    "name": "thrishma",
+    "url": "https://github.com/thrishma"
+  },
+  "license": "MIT",
+  "keywords": ["images", "preview", "screenshots", "kitty", "macos"],
+  "types": "./types/index.d.ts"
+}

@@ -65,7 +65,10 @@ async function sync($: EngineInterface, text: string) {
   if (kept.length !== have.length) await update($, previews, () => kept)
 
   if (now.length === 0) {
-    if (have.length) await $.ui.close({ id: PANE }).catch(() => undefined)
+    if (have.length) {
+      await $.ui.close({ id: PANE }).catch(() => undefined)
+      await clearFiles($)
+    }
     return
   }
 
@@ -78,11 +81,31 @@ async function sync($: EngineInterface, text: string) {
       const p: Preview = { n, source, via, png, width: Number(w), height: Number(h) }
       await update($, previews, list => [...list.filter(x => x.n !== n), p].sort((a, b) => a.n - b.n))
       await update($, selected, () => n)
-      await $.ui.open({ id: PANE, title: 'Image preview' })
+      // Shown beside the chat when the terminal is wide enough (Claude Code
+      // seats a pane a mod opens by itself from 144 columns); the row above the
+      // prompt shows the preview either way.
+      await $.ui.open({ id: PANE, title: 'Image preview' }).catch(() => undefined)
     } finally {
       pending.delete(n)
     }
   }
+}
+
+// Previews are throwaway: removed once the box no longer holds an image.
+async function clearFiles($: EngineInterface) {
+  await run($, 'rm -f "$HOME/${PREVIEW_DIR}"/image-*.png', []).catch(() => undefined)
+}
+
+// Cells for a picture of width x height pixels inside maxCols x maxRows
+// (a cell is about twice as tall as wide).
+function fit(width: number, height: number, maxCols: number, maxRows: number) {
+  let cols = Math.max(1, Math.min(255, maxCols))
+  let rows = width > 0 ? Math.round((cols * height) / width / 2) : maxRows
+  if (rows > maxRows) {
+    cols = Math.max(1, Math.round((cols * maxRows) / rows))
+    rows = maxRows
+  }
+  return { cols, rows: Math.max(1, Math.min(255, rows)) }
 }
 
 const VIA: Record<string, string> = {
@@ -96,6 +119,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
     await update($, previews, () => [])
+    await clearFiles($)
     return started
   })
 
@@ -112,6 +136,58 @@ export const register: Register = on => {
     return box
   }).catch(($, e, next) => next(e))
 
+  // The row above the prompt box: always drawn, whatever the terminal width.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const list = await read($, previews)
+    if (list.length === 0 || e.props.hasSurvey) return next(e)
+    const { Box, Text, Button, Image } = $.ui.resolve(e) as any
+    const selN = await read($, selected)
+    const sel = list.find(p => p.n === selN) ?? list[list.length - 1]!
+    const name = sel.source ? sel.source.split('/').pop() : '(unknown)'
+    const thumb = fit(sel.width, sel.height, 28, 8)
+    return (
+      <Box flexDirection="row" gap={2}>
+        {sel.png ? (
+          <Image source={{ file: sel.png, format: 'png' }} columns={thumb.cols} rows={thumb.rows} alt={name} />
+        ) : null}
+        <Box flexDirection="column">
+          <Text bold>
+            Image #{sel.n}: {name}
+          </Text>
+          <Text dimColor>
+            {sel.png ? `Best guess: ${VIA[sel.via] ?? sel.via}` : "Couldn't tell which file this is."}
+          </Text>
+          {list.length > 1 && (
+            <Box flexDirection="row" gap={1}>
+              {list.map(p => (
+                <Button
+                  key={`band-${p.n}`}
+                  plain
+                  dimColor={p.n !== sel.n}
+                  onPress={() => void update($, selected, () => p.n)}
+                >
+                  #{p.n}
+                </Button>
+              ))}
+            </Box>
+          )}
+          <Box flexDirection="row" gap={2}>
+            {sel.png && (
+              <Button key="band-big" onPress={() => void $.ui.open({ id: PANE, title: 'Image preview' })}>
+                Bigger
+              </Button>
+            )}
+            {sel.png && sel.via !== 'clipboard' && (
+              <Button key="band-open" onPress={() => void $.process.run(['/usr/bin/open', '-a', 'Preview', sel.source])}>
+                Open large
+              </Button>
+            )}
+          </Box>
+        </Box>
+      </Box>
+    )
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button, Image } = $.ui.resolve(e) as any
     const list = await read($, previews)
@@ -124,13 +200,7 @@ export const register: Register = on => {
 
     const name = sel.source ? sel.source.split('/').pop() : '(unknown)'
     const room = Math.max(4, Math.min(255, rows - (list.length > 1 ? list.length : 0) - 5))
-    let imgCols = Math.min(255, cols)
-    let imgRows = sel.width > 0 ? Math.round((imgCols * sel.height) / sel.width / 2) : room
-    if (imgRows > room) {
-      imgCols = Math.max(1, Math.round((imgCols * room) / imgRows))
-      imgRows = room
-    }
-    imgRows = Math.max(1, Math.min(255, imgRows))
+    const { cols: imgCols, rows: imgRows } = fit(sel.width, sel.height, cols, room)
 
     return (
       <Box flexDirection="column">

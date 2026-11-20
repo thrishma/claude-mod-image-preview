@@ -147,7 +147,7 @@ export const register: Register = on => {
     const thumb = fit(sel.width, sel.height, 28, 8)
     return (
       <Box flexDirection="row" gap={2}>
-        {sel.png ? (
+        {sel.png && Image ? (
           <Image source={{ file: sel.png, format: 'png' }} columns={thumb.cols} rows={thumb.rows} alt={name} />
         ) : null}
         <Box flexDirection="column">
@@ -222,7 +222,9 @@ export const register: Register = on => {
         {sel.png ? (
           <Box flexDirection="column">
             <Text dimColor>Best guess: {VIA[sel.via] ?? sel.via}</Text>
-            <Image source={{ file: sel.png, format: 'png' }} columns={imgCols} rows={imgRows} alt={name} />
+            {Image ? (
+              <Image source={{ file: sel.png, format: 'png' }} columns={imgCols} rows={imgRows} alt={name} />
+            ) : null}
             {sel.via !== 'clipboard' && (
               <Button key="open" hotkey="o" onPress={() => void $.process.run(['/usr/bin/open', '-a', 'Preview', sel.source])}>
                 Open large

@@ -108,6 +108,26 @@ function fit(width: number, height: number, maxCols: number, maxRows: number) {
   return { cols, rows: Math.max(1, Math.min(255, rows)) }
 }
 
+// Opens the image in Preview, saying so, and saying why when it can't. Falls
+// back to the preview copy when the original is gone (a screenshot thumbnail's
+// temp file) or there is none (a clipboard image).
+async function openLarge($: EngineInterface, p: Preview) {
+  const name = p.source ? p.source.split('/').pop() : `Image #${p.n}`
+  const hasSource = p.via !== 'clipboard' && p.source !== '' && (await $.fs.exists(p.source).catch(() => false))
+  const target = hasSource ? p.source : p.png
+  if (!target) {
+    $.ui.toast("Nothing to open: couldn't tell which file this is.")
+    return
+  }
+  $.ui.toast(`Opening ${name} in Preview…`)
+  try {
+    const r = await $.process.run(['/usr/bin/open', '-a', 'Preview', target])
+    if (r.exitCode !== 0) $.ui.toast(`Couldn't open ${name}: ${r.stderr.trim() || `exit ${r.exitCode}`}`)
+  } catch (err) {
+    $.ui.toast(`Couldn't open ${name}: ${String(err)}`)
+  }
+}
+
 const VIA: Record<string, string> = {
   screenshot: 'the screenshot you just took',
   finder: 'selected in Finder',
@@ -118,7 +138,8 @@ const VIA: Record<string, string> = {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await update($, previews, () => [])
+    // A reload keeps $.state: drop previews left from before it.
+    if ((await read($, previews)).length) await update($, previews, () => [])
     await clearFiles($)
     return started
   })
@@ -177,8 +198,8 @@ export const register: Register = on => {
                 Bigger
               </Button>
             )}
-            {sel.png && sel.via !== 'clipboard' && (
-              <Button key="band-open" onPress={() => void $.process.run(['/usr/bin/open', '-a', 'Preview', sel.source])}>
+            {sel.png && (
+              <Button key="band-open" onPress={() => void openLarge($, sel)}>
                 Open large
               </Button>
             )}
@@ -225,8 +246,8 @@ export const register: Register = on => {
             {Image ? (
               <Image source={{ file: sel.png, format: 'png' }} columns={imgCols} rows={imgRows} alt={name} />
             ) : null}
-            {sel.via !== 'clipboard' && (
-              <Button key="open" hotkey="o" onPress={() => void $.process.run(['/usr/bin/open', '-a', 'Preview', sel.source])}>
+            {(
+              <Button key="open" hotkey="o" onPress={() => void openLarge($, sel)}>
                 Open large
               </Button>
             )}
